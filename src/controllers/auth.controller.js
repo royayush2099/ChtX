@@ -1,6 +1,7 @@
 import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from 'bcryptjs'
+import cloudinary from "../lib/cloudinary.js";
 
 export const signup = async (req,res)=>{
     const{fullName, email, password}  =req.body;
@@ -45,14 +46,79 @@ export const signup = async (req,res)=>{
     }
     //res.send("singup route")
 }
-export const login = (req,res)=>{
+export const login = async (req,res)=>{
+    const {email,password }= req.body
+      try{
+    const user = await User.findOne({email})  
+    if(!user){
+        return res.status(400).json({message:"Invalid credentials"})
+    }
+    //checking the password is correct or not
+  const isPasswordCorrect =  await bcrypt.compare(password,user.password)
+  if(!isPasswordCorrect){
+    return res.status(400).json({message:"Invalid Credentials"});
+  }
 
-    res.send("login route")
+  //generation the token
+  generateToken(user._id,res)
+  res.status(200).json({
+    _id:user._id,
+    fullName:user.fullName,
+    email:user.email,
+    profilePic:user.profilePic,
+  })
+      }
+      catch(err){
+      console.log("Error in login controller",err.message);
+      res.status(500).json({message:"Internal Server Error"})
+      }
+    //res.send("login route")
 }
 export const logout = (req,res)=>{
-    res.send("logout route")
+    //clearing out the cookies and logout
+    try{
+     res.cookie("jwt","",{maxAge:0})
+     res.status(200).json({message:"Logged out successfully"})
+    }
+    catch(err){
+   console.log("Error in logout controller",err.message)
+   res.status(500).json({message:"Internal Server Error"})
+    }
+   // res.send("logout route")
 }
 
+export const updateProfile = async (req,res)=>{
+ try{
+const {profilePic} = req.body;
+//we can use ._id because it is provided in protectroute
+const userId = req.user._id;
+if(!profilePic){
+    return res.status(400).json({message:"Profile pic is required"});
+}
+//uploading the picture to cloudinary bucket 
+const uploadResponse = await cloudinary.uploader.upload(profilePic);
+//adding the profile pic to the database in string format
+const updatedUser = await User.findByIdAndUpdate(userId,{profilePic:uploadResponse.secure_url},{new:true})
+//new is applied because as default findByIdAnd Update return the old document as it is before the update
+res.status(200).json(updatedUser);
+ }
+ catch(err){
+ console.log("error in update profile",err)
+ res.status(500).json({message:"Internal server error"});
+ }
+}
+
+
+
+export const checkAuth = (req,res)=>{
+    try{
+        res.status(200).json(req.user);
+    }
+    catch(err){
+        console.log("Error in checkAuth controller, error.message");
+        res.status(500).json({message:"Internal Server Error"});
+    }
+}
 
 //need to change something
 
